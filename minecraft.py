@@ -20,6 +20,7 @@ address = ('localhost', MCC_PORT)
 def mc_running():
     return proc and proc.poll() is None
 
+
 def try_send(msg):
     try:
         conn.send(msg + '\n')
@@ -30,9 +31,9 @@ def try_send(msg):
 def mc_send(cmd):
     try:
         proc.stdin.write(str.encode(cmd + '\n'))
+        proc.stdin.flush()
     except AttributeError:
         print(f'MCSEND: Server is dead')
-    proc.stdin.flush()
 
 
 def mc_start():
@@ -100,21 +101,44 @@ def mc_stop():
         proc = None
         return True
 
+
+def mc_whitelist(name, add):
+    if not mc_running():
+        return False
+    else:
+        if add:
+            mc_send(f'whitelist add {name}')
+            mc_send('whitelist reload')
+        else:
+            mc_send(f'whitelist remove {name}')
+            mc_send('whitelist reload')
+        return True
+
+
+def mc_ls_whitelist():
+    if not mc_running():
+        return False
+    else:
+        mc_send('whitelist list')
+        return True
+
+
 def mc_command(cmd, args):
     print(f'CMD: {cmd} {args}')
+    help_msg = ('ServerBot Minecraft commands:\n'
+                '!mc help - print this message\n'
+                '!mc ping - ping the server\n'
+                '!mc status - check the server status\n'
+                '!mc start - start the server\n'
+                '!mc stop - stop the server\n'
+                '!mc whitelist <add|remove|list> [player] - list or modify the whitelist')
+#                '!mc cmd <command> - send command to the server\n'
     if cmd == 'help':
-        help_msg = ('ServerBot Minecraft commands:\n'
-                    '!mc help - print this message\n'
-                    '!mc start - start the server\n'
-                    '!mc stop - stop the server\n'
-                    '!mc ping - ping the server\n'
-                    '!mc status - check the server status')
-#                    '!mc cmd <command> - send command to the server\n'
         try_send(f'OK  |{help_msg}')
     elif cmd == 'start':
         result = mc_start()
         if result:
-            try_send('OK  |Minecraft server started')
+            try_send('OK  |Minecraft server starting')
         else:
             try_send('ERR |Minecraft server is already running')
     elif cmd == 'stop':
@@ -130,6 +154,37 @@ def mc_command(cmd, args):
             try_send('OK  |Minecraft Server is running')
         else:
             try_send('OK  |Minecraft Server is not running')
+    elif cmd == 'whitelist':
+        if args:
+            arglist = args.split()
+            wl_cmd = arglist[0]
+            wl_name = None
+            if len(arglist) == 2:
+                wl_name = arglist[1]
+            if wl_cmd == 'list':
+                result = mc_ls_whitelist()
+                if result:
+                    try_send('OK  |Success - check the log for current whitelist')
+                else:
+                    try_send('ERR |Minecraft Server is not running')
+                return
+            if wl_cmd == 'add' and wl_name:
+                result = mc_whitelist(wl_name, True)
+                if result:
+                    try_send('OK  |User added to whitelist')
+                else:
+                    try_send('ERR |Minecraft Server is not running')
+                return
+            elif wl_cmd == 'remove' and wl_name:
+                result = mc_whitelist(wl_name, False)
+                if result:
+                    try_send('OK  |User removed from whitelist')
+                else:
+                    try_send('ERR |Minecraft Server is not running')
+                return
+        # We didn't hit any valid cases
+        try_send(f'ERR |Usage: !mc whitelist <add|remove|list> [player]')
+
 #    elif cmd == 'cmd':
 #        if proc:
 #            mc_send(args)
@@ -138,6 +193,7 @@ def mc_command(cmd, args):
 #            try_send('ERR |Minecraft Server is not running')
     else:
         try_send(f'ERR |Unknown command: {cmd}')
+        try_send(f'OK  |{help_msg}')
 
 
 # Open IPC channel
