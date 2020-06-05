@@ -23,36 +23,66 @@ proc = None
 conn = None
 address = ('localhost', MCC_PORT)
 
+# This will be the class we export and the serverbot will import
 class Minecraft:
-    def __init__(self, client, guild, prefix='mc', port=MCC_PORT, botchanid=BOT_CHAN_ID, logchanid=MC_LOG_CHAN_ID):
+    def __init__(self,
+                 client,
+                 guild,
+                 prefix='mc',
+                 port=MCC_PORT,
+                 botchanid=BOT_CHAN_ID,
+                 logchanid=MC_LOG_CHAN_ID):
+        # Set up members
         self.prefix = prefix
         self.port = port
         self.guild = guild
-        self.botchanid = botchanid
-        self.logchanid = logchanid
-        # TODO: Error handling
-        self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
+        self.client = client
+        self.logchan = guild.get_channel(logchanid)
+        self.botchan = guild.get_channel(botchanid)
+        self.__conn = None
+        # Launch the read thread. This will attempt to create a connection to a mc server controller and listen
         def read_thread():
-            mlc = guild.get_channel(logchanid)
-            bc = guild.get_channel(botchanid)
-            while not self.__conn.closed:
-                line = self.__conn.recv()
-                [status, msg] = line.split('|', 1)
-                status = status.strip()
-                if status == 'LOG':
-                    asyncio.run_coroutine_threadsafe(mlc.send(msg), client.loop)
-                elif status == 'OK':
-                    asyncio.run_coroutine_threadsafe(bc.send(msg), client.loop)
-                else:
-                    asyncio.run_coroutine_threadsafe(bc.send(f'{status}: {msg}'), client.loop)
+            while True:
+                try:
+                    self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
+                    self.__botchan_send('Minecraft server manager connected!')
+                except (EOFError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
+                    if self.__conn is not None:
+                        self.__conn.close()
+                        time.sleep(10) # Wait a reasonable amount of time and chek again
+                while self.__conn and (not self.__conn.closed):
+                    try:
+                        line = self.__conn.recv()
+                        [status, msg] = line.split('|', 1)
+                        status = status.strip()
+                        if status == 'LOG':
+                            self.__logchan_send(msg)
+                        elif status == 'OK':
+                            self.__botchan_send(msg)
+                        else:
+                            self.__botchan_send(f'{status}: {msg}')
+                    except (EOFError, ConnectionResetError, BrokenPipeError):
+                        self.__botchan_send('ERR: The Minecraft server manager crashed. Attempting to reconnect')
+                        self.__conn.close()
 
         reader = threading.Thread(target=read_thread)
         reader.daemon = True
         reader.start()
 
-    def send(self, msg):
+    def try_send(self, msg):
         #TODO: handle errors
-        self.__conn.send(msg)
+        try:
+            self.__conn.send(msg)
+        except (OSError, AttributeError):
+            # We lost connection. We'll just log it and let the read loop handle reconnecting
+            self.__botchan_send('Could not send command to Minecraft server manager')
+
+    def __logchan_send(self, msg):
+        asyncio.run_coroutine_threadsafe(self.logchan.send(msg), self.client.loop)
+
+    def __botchan_send(self, msg):
+        asyncio.run_coroutine_threadsafe(self.botchan.send(msg), self.client.loop)
+
 
 
 def mc_running():
@@ -63,10 +93,12 @@ def try_send(msg):
     try:
         conn.send(msg + '\n')
     except (OSError, AttributeError):
+        # Since we lost connection to the client we can't really notify them there's an issues so
+        # just log it and fail
         print(f'TRYSEND: Failed to send: {msg}')
 
 
-def mc_send(cmd):
+def mc_write(cmd):
     try:
         proc.stdin.write(str.encode(cmd + '\n'))
         proc.stdin.flush()
@@ -107,7 +139,7 @@ def mc_start():
                 if line:
                     # Wait for a connection to be established
                     while not conn or conn.closed:
-                        time.sleep(1)
+                        time.sleep(10) # wait for the connection to come back up
                     # Try to send the thing
                     try:
                         conn.send(f'LOG |{bytes.decode(line)}')
@@ -132,7 +164,7 @@ def mc_stop():
     if not mc_running():
         return False
     else:
-        mc_send('stop')
+        mc_write('stop')
         # wait to stop
         while proc.poll() is None:
             time.sleep(1)
@@ -145,11 +177,11 @@ def mc_whitelist(name, add):
         return False
     else:
         if add:
-            mc_send(f'whitelist add {name}')
-            mc_send('whitelist reload')
+            mc_write(f'whitelist add {name}')
+            mc_write('whitelist reload')
         else:
-            mc_send(f'whitelist remove {name}')
-            mc_send('whitelist reload')
+            mc_write(f'whitelist remove {name}')
+            mc_write('whitelist reload')
         return True
 
 
@@ -157,7 +189,7 @@ def mc_ls_whitelist():
     if not mc_running():
         return False
     else:
-        mc_send('whitelist list')
+        mc_write('whitelist list')
         return True
 
 
@@ -225,7 +257,7 @@ def mc_command(cmd, args):
 
 #    elif cmd == 'cmd':
 #        if proc:
-#            mc_send(args)
+#            mc_write(args)
 #            try_send('OK  |')
 #        else:
 #            try_send('ERR |Minecraft Server is not running')

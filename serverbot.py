@@ -77,7 +77,7 @@ async def process_cmd(prefix, command, channel, roles):
                     '!mc - minecraft prefix ("!mc help" for more info)')
         await channel.send(help_msg)
     elif prefix in controller_handlers:
-        controller_handlers[prefix].send(command)
+        controller_handlers[prefix].try_send(command)
     else:
         # Ignore unknown commands
         return

@@ -7,7 +7,9 @@ This is still a very early version so you're going to have to understand a littl
 Someday, this will all be nice and polished. Today is not that day.
 In essence, clone all this stuff and modify your .env file with the necessary server/channel IDs and secrets.
 
-Note that I've tried to make minecraft.py more or less stable but server_bot.py has basically no error checking of any kind
+At this stage there should be at least some error handling on both processes. If you're wondering
+why I did it this way, the idea was to handle discord connection issues gracefully without crashing
+the minecraft server
 
 ## Installation
 
