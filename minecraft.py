@@ -71,7 +71,6 @@ def mc_start():
                         time.sleep(1)
                     # Try to send the thing
                     try:
-                        # TODO: mark different than C&C messages
                         conn.send(f'LOG |{bytes.decode(line)}')
                         line = None
                     # If we fail, close the connection (remote probably disconnected) and leave the
@@ -108,9 +107,9 @@ def mc_command(cmd, args):
                     '!mc help - print this message\n'
                     '!mc start - start the server\n'
                     '!mc stop - stop the server\n'
-                    '!mc cmd <command> - send command to the server\n'
                     '!mc ping - ping the server\n'
                     '!mc status - check the server status')
+#                    '!mc cmd <command> - send command to the server\n'
         try_send(f'OK  |{help_msg}')
     elif cmd == 'start':
         result = mc_start()
@@ -124,12 +123,6 @@ def mc_command(cmd, args):
             try_send('OK  |Minecraft server stopped')
         else:
             try_send('ERR |Minecraft Server is not running')
-    elif cmd == 'cmd':
-        if proc:
-            mc_send(args)
-            try_send('OK  |')
-        else:
-            try_send('ERR |Minecraft Server is not running')
     elif cmd == 'ping':
         try_send(f'OK  |pong')
     elif cmd == 'status':
@@ -137,6 +130,12 @@ def mc_command(cmd, args):
             try_send('OK  |Minecraft Server is running')
         else:
             try_send('OK  |Minecraft Server is not running')
+#    elif cmd == 'cmd':
+#        if proc:
+#            mc_send(args)
+#            try_send('OK  |')
+#        else:
+#            try_send('ERR |Minecraft Server is not running')
     else:
         try_send(f'ERR |Unknown command: {cmd}')
 
