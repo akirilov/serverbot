@@ -7,6 +7,8 @@ This is still a very early version so you're going to have to understand a littl
 Someday, this will all be nice and polished. Today is not that day.
 In essence, clone all this stuff and modify your .env file with the necessary server/channel IDs and secrets.
 
+Note that I've tried to make minecraft.py more or less stable but server_bot.py has basically no error checking of any kind
+
 ## Installation
 
 1. Clone the repo and copy all the files into your preferred location (I like `/opt/serverbot` because I'm too lazy to type long paths)
@@ -54,8 +56,8 @@ A: That's not a question
 
 **Q: Why would you do this?**
 
-A: So I can give my friends the ability to start/stop my server and invite new people without givng them accounts on my server and
-   teaching them how to use linux
+A: So I can give my friends the ability to start/stop my minecraftr server and invite new people without 
+giving them accounts on my linux server and teaching them how to use it
 
 **Q: Something doesn't work!**
 
