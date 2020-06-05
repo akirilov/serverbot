@@ -30,8 +30,8 @@ class Minecraft:
         self.guild = guild
         self.botchanid = botchanid
         self.logchanid = logchanid
-        self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
         # TODO: Error handling
+        self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
         def read_thread():
             mlc = guild.get_channel(logchanid)
             bc = guild.get_channel(botchanid)
@@ -236,7 +236,7 @@ def mc_command(cmd, args):
 if __name__ == '__main__':
     # Open IPC channel
     listener = mpc.Listener(address, authkey=SECRET)
-    
+
     # Wait for connections
     while True:
         try:

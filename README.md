@@ -16,6 +16,20 @@ Note that I've tried to make minecraft.py more or less stable but server_bot.py 
 3. Make any changes you need to your Discord server
 4. Fill out the .env file
 
+## Usage
+
+As minecraft user:
+
+```
+python3 minecraft.py
+```
+
+As serverbot user:
+
+```
+python3 serverbot.py
+```
+
 ## Requirements
 
 I dunno, just try to run it and see what fails
@@ -26,6 +40,7 @@ I dunno, just try to run it and see what fails
 - GUILD_ID - The Discord id number of your server
 - SECRET - Used for the python multiprocessing authkey
 - BOT_CHAN - The Discord channel id of your bot channel. The bot will only accept messages from this channel
+- MC_DIR - The directory where minecraft should run from
 - MC_LOG_CHAN - The Discord channel id of the channel where you want your minecraft log to be spammed
 - MCC_PORT - The port you want minecraft.py to run on
 
@@ -38,7 +53,6 @@ Both of these assume you don't notice the failure and don't do anything about it
 ## Assumptions
 
 - Your server contains an 'RCON' role which will be used to restict who can control the server
-- Your minecraft server is installed in `/opt/minecraft`
 - You know how to create your own bot using the Discord developer webapp. It's pretty simple. The only permissions this bot
   should need are reading text channels (if you want to talk to it) and posting to them (if you want it to talk back),
   but since you'll be running your own bot, do whatever. Give it admin. Go crazy.
