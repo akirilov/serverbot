@@ -15,7 +15,8 @@ load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
 BOT_CHAN_ID = int(os.getenv('BOT_CHAN_ID'))
 MC_LOG_CHAN_ID = int(os.getenv('MC_LOG_CHAN_ID'))
-MCC_PORT= int(os.getenv('MCC_PORT'))
+MC_DIR = os.getenv('MC_DIR')
+MCC_PORT = int(os.getenv('MCC_PORT'))
 
 # Globals
 proc = None
@@ -86,7 +87,7 @@ def mc_start():
                         stdin=sp.PIPE,
                         stdout=sp.PIPE,
                         stderr=sp.STDOUT,
-                        cwd='/opt/minecraft')
+                        cwd=MC_DIR)
         # TODO verify this actually started successfully
 
         # Start a reader for this process
