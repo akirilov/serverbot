@@ -54,8 +54,8 @@ A: That's not a question
 
 **Q: Why would you do this?**
 
-A: So I can give my friends the ability to start/stop my server and invite new people without givng them accounts on my server and
-   teaching them how to use linux
+A: So I can give my friends the ability to start/stop my minecraftr server and invite new people without 
+giving them accounts on my linux server and teaching them how to use it
 
 **Q: Something doesn't work!**
 
