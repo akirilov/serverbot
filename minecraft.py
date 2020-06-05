@@ -1,3 +1,4 @@
+import asyncio
 import multiprocessing as mp
 import multiprocessing.connection as mpc
 import os
@@ -7,15 +8,51 @@ import time
 
 from dotenv import load_dotenv
 
+__all__ = ['Minecraft']
+
 # Load Env
 load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
+BOT_CHAN_ID = int(os.getenv('BOT_CHAN_ID'))
+MC_LOG_CHAN_ID = int(os.getenv('MC_LOG_CHAN_ID'))
 MCC_PORT= int(os.getenv('MCC_PORT'))
 
 # Globals
 proc = None
 conn = None
 address = ('localhost', MCC_PORT)
+
+class Minecraft:
+    def __init__(self, client, guild, prefix='mc', port=MCC_PORT, botchanid=BOT_CHAN_ID, logchanid=MC_LOG_CHAN_ID):
+        self.prefix = prefix
+        self.port = port
+        self.guild = guild
+        self.botchanid = botchanid
+        self.logchanid = logchanid
+        self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
+        # TODO: Error handling
+        def read_thread():
+            mlc = guild.get_channel(logchanid)
+            bc = guild.get_channel(botchanid)
+            while not self.__conn.closed:
+                line = self.__conn.recv()
+                [status, msg] = line.split('|', 1)
+                status = status.strip()
+                if status == 'LOG':
+                    asyncio.run_coroutine_threadsafe(mlc.send(msg), client.loop)
+                elif status == 'OK':
+                    asyncio.run_coroutine_threadsafe(bc.send(msg), client.loop)
+                else:
+                    asyncio.run_coroutine_threadsafe(bc.send(f'{status}: {msg}'), client.loop)
+
+        reader = threading.Thread(target=read_thread)
+        reader.daemon = True
+        reader.start()
+
+    def send(self, msg):
+        #TODO: handle errors
+        self.__conn.send(msg)
+
 
 def mc_running():
     return proc and proc.poll() is None
@@ -195,29 +232,29 @@ def mc_command(cmd, args):
         try_send(f'ERR |Unknown command: {cmd}')
         try_send(f'OK  |{help_msg}')
 
-
-# Open IPC channel
-listener = mpc.Listener(address, authkey=SECRET)
-
-# Wait for connections
-while True:
-    try:
-        conn = listener.accept()
-    except (EOFError, ConnectionResetError, BrokenPipeError):
-        print('LISTENER: Failed to connect to client')
-        continue
-    print('LISTENER: Client connected!')
-    while conn and (not conn.closed):
+if __name__ == '__main__':
+    # Open IPC channel
+    listener = mpc.Listener(address, authkey=SECRET)
+    
+    # Wait for connections
+    while True:
         try:
-            line = conn.recv()
-            tokens = line.split(' ', 1)
-            cmd = tokens[0]
-            args = None
-            if len(tokens) > 1:
-                args = tokens[1].rstrip()
-            mc_command(cmd, args)
+            conn = listener.accept()
         except (EOFError, ConnectionResetError, BrokenPipeError):
-            print(f'LISTENER: Client disconnected!')
-            conn.close()
+            print('LISTENER: Failed to connect to client')
+            continue
+        print('LISTENER: Client connected!')
+        while conn and (not conn.closed):
+            try:
+                line = conn.recv()
+                tokens = line.split(' ', 1)
+                cmd = tokens[0]
+                args = None
+                if len(tokens) > 1:
+                    args = tokens[1].rstrip()
+                mc_command(cmd, args)
+            except (EOFError, ConnectionResetError, BrokenPipeError):
+                print(f'LISTENER: Client disconnected!')
+                conn.close()
 
-# TODO: detect crash and alert back to discord
+ # TODO: detect crash and alert back to discord

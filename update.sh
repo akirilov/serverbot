@@ -1,0 +1,1 @@
+cp /opt/serverbot/*.py .
