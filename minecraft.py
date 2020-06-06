@@ -5,33 +5,57 @@ import os
 import subprocess as sp
 import threading
 import time
-
-from dotenv import load_dotenv
+import dotenv as de
 
 __all__ = ['Minecraft']
 
 # Load Env
-load_dotenv()
+de.load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
 BOT_CHAN_ID = int(os.getenv('BOT_CHAN_ID'))
 MC_LOG_CHAN_ID = int(os.getenv('MC_LOG_CHAN_ID'))
 MC_DIR = os.getenv('MC_DIR')
 MCC_PORT = int(os.getenv('MCC_PORT'))
+MC_PREFIX = os.getenv('MC_PREFIX')
 
-# Globals
+# Globals (for controller)
 proc = None
 conn = None
-address = ('localhost', MCC_PORT)
 
-# This will be the class we export and the serverbot will import
+
 class Minecraft:
+    """
+    Class for importing by the serverbot. It will handle all communication with the Minecraft
+    Controller (the functionality implemented by the rest of this module.
+
+    Just initialize it and register the send function for callback with the prefix
+    """
+
     def __init__(self,
                  client,
                  guild,
-                 prefix='mc',
+                 prefix=MC_PREFIX,
                  port=MCC_PORT,
                  botchanid=BOT_CHAN_ID,
                  logchanid=MC_LOG_CHAN_ID):
+        """
+        Initializes a new Minecraft object for communicating with a Minecraft Controller.
+
+        Args:
+            client:    The Discord client to interact with
+            guild:     The Discord server (guild) the bot should respond on
+            prefix:    (Optional) The Discord server prefix. Defaults to env var
+            port:      (Optional) The port to run the Minecraft controller on. Defaults to
+                       environment variable
+            botchanid: (Optional) The id of the Discord server bot channel. Defaults to environment
+                       variable
+            logchanid: (Optional) The id of the Discord server Minecraft log channe. Defaults to
+                       environment variable
+
+        Returns:
+            A newly initialized Minecraft object
+        """
+
         # Set up members
         self.prefix = prefix
         self.port = port
@@ -40,17 +64,31 @@ class Minecraft:
         self.logchan = guild.get_channel(logchanid)
         self.botchan = guild.get_channel(botchanid)
         self.__conn = None
-        # Launch the read thread. This will attempt to create a connection to a mc server controller and listen
+
         def read_thread():
+            """
+            Launch the read thread. This will attempt to create a connection to a mc server
+            controller and listen for incoming data. This thread will stay alive until the process
+            closes.
+            """
+
             while True:
+
+                # First connect to the server
                 try:
                     self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
                     self.__botchan_send('Minecraft server manager connected!')
+
+                # Leaving unassigned or closing skips the next loop
                 except (EOFError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
                     if self.__conn is not None:
                         self.__conn.close()
                         time.sleep(10) # Wait a reasonable amount of time and chek again
+
+                # Read loop
                 while self.__conn and (not self.__conn.closed):
+
+                    # Try to read and direct messages appropriately
                     try:
                         line = self.__conn.recv()
                         [status, msg] = line.split('|', 1)
@@ -61,57 +99,122 @@ class Minecraft:
                             self.__botchan_send(msg)
                         else:
                             self.__botchan_send(f'{status}: {msg}')
+
+                    # Close the connection so we end the loop and try to reconnect at the top
                     except (EOFError, ConnectionResetError, BrokenPipeError):
-                        self.__botchan_send('ERR: The Minecraft server manager crashed. Attempting to reconnect')
+                        self.__botchan_send('ERR: The Minecraft server manager crashed. Attempting'
+                                            'to reconnect')
                         self.__conn.close()
 
+        # Start a daemon reader thread
         reader = threading.Thread(target=read_thread)
         reader.daemon = True
         reader.start()
 
+
     def try_send(self, msg):
-        #TODO: handle errors
+        """
+        Try to send a message to the controller. If we fail, print an error to the bot channel. We
+        don't need to handle the failure here since the reader reads in a tight loop so a connection
+        failure will be caught there as well and will trigger a reconnect.
+
+        Args:
+            msg: The message to try to send
+        """
+
         try:
             self.__conn.send(msg)
         except (OSError, AttributeError):
             # We lost connection. We'll just log it and let the read loop handle reconnecting
             self.__botchan_send('Could not send command to Minecraft server manager')
 
+
     def __logchan_send(self, msg):
+        """
+        Send a message to the log channel.
+
+        Args:
+            msg: The message to send
+        """
+
         asyncio.run_coroutine_threadsafe(self.logchan.send(msg), self.client.loop)
 
+
     def __botchan_send(self, msg):
+        """
+        Send a message to the bot channel.
+
+        Args:
+            msg: The message to send
+        """
+
         asyncio.run_coroutine_threadsafe(self.botchan.send(msg), self.client.loop)
 
 
 
 def mc_running():
+    """
+    Check if the minecraft server process is running.
+
+    Returns:
+        True if the server process is running, False otherwise
+    """
+
     return proc and proc.poll() is None
 
 
 def try_send(msg):
+    """
+    Try to send a message to the connected client (usually serverbot). We don't need to handle the
+    failure here since the reader reads in a tight loop so a connection failure will be caught there
+    as well and will trigger a reconnect. We also can't send an error message since the client isn't
+    connected to receive the message so we'll just fail silently.
+
+    Args:
+        msg: The message to try to send
+    """
+
     try:
         conn.send(msg + '\n')
     except (OSError, AttributeError):
         # Since we lost connection to the client we can't really notify them there's an issues so
         # just log it and fail
-        print(f'TRYSEND: Failed to send: {msg}')
+        print(f'try_send: Failed to send: {msg}')
 
 
 def mc_write(cmd):
+    """
+    Try to send a message to the Minecraft process. We don't need to hand the failure here since the
+    reader will catch it and mark the server dead.
+
+    Args:
+        cmd: The Minecraft command to send
+
+    Returns:
+        True if successful, False otherwise
+    """
+
     try:
         proc.stdin.write(str.encode(cmd + '\n'))
         proc.stdin.flush()
+        return True
     except AttributeError:
-        print(f'MCSEND: Server is dead')
+        print(f'mc_write: Server is dead')
+        return False
 
 
 def mc_start():
     """
-    OK basically we're gonna start a minecraft process and create a listener thread dedicated to it.
+    Start a new minecraft process and spin up a listener thread to handle incoming data.
+
+    Returns:
+        True if the server was started successfully, False otherwise (e.g. if server is already
+        running)
     """
+
     global proc
 
+    # Fastfail if the server is running, else start it
     if mc_running():
         return False
     else:
@@ -121,36 +224,50 @@ def mc_start():
                         stderr=sp.STDOUT,
                         cwd=MC_DIR)
         # TODO verify this actually started successfully
-
+t
         # Start a reader for this process
-        go = threading.Event()
         def read_thread():
+            """
+            Launch the reader thread. This will attempt to read from the Minecraft process and send
+            it to the client (serverbot) to process. If a send fails, it will keep retrying until it
+            succeeds. If a read fails, we continue and the top loop will catch the dead proces and
+            report it to the client (serverbot)
+            """
+
             line = None
             while mc_running():
+
                 # Grab a new line if we're not holding onto a failed send
                 if not line:
+
                     # Try reading a line. If this fails, check that the proc didn't die
                     try:
                         line = proc.stdout.readline()
                     except BrokenPipeError:
-                        print('READER: Pipe read failed!')
+                        print('reader: Pipe read failed!')
                         continue # Top loop will handle dead process, otherwise we retry
+
                 # Check that we have something to send
                 if line:
+
                     # Wait for a connection to be established
                     while not conn or conn.closed:
                         time.sleep(10) # wait for the connection to come back up
+
                     # Try to send the thing
                     try:
                         conn.send(f'LOG |{bytes.decode(line)}')
                         line = None
+
                     # If we fail, close the connection (remote probably disconnected) and leave the
                     # line so we can retry it
                     except OSError:
-                        print('READER: Client disconnected!')
+                        print('reader: Client disconnected!')
                         conn.close()
-            print('READER: Process exited. Exiting reader thread.')
 
+            print('reader: Process exited. Exiting reader thread.')
+
+        # Start up the reader thread
         reader = threading.Thread(target=read_thread)
         reader.daemon = True
         reader.start()
@@ -159,6 +276,13 @@ def mc_start():
 
 
 def mc_stop():
+    """
+    Cleanly save and stop the currently running Minecraft server, if any
+
+    Returns:
+        True if successful, False otherwise (e.g. if server isn't running)
+    """
+
     global proc
 
     if not mc_running():
@@ -173,30 +297,62 @@ def mc_stop():
 
 
 def mc_whitelist(name, add):
-    if not mc_running():
-        return False
-    else:
+    """
+    Add a user to or remove a user from the whitelist
+
+    Args:
+        name: The name of the user to be added or removed
+        add:  If set to True, add the user, else remove
+
+    Returns:
+        True if successful, false otherwise (e.g if the server is not running)
+    """
+
+    result = False
+
+    if mc_running():
         if add:
-            mc_write(f'whitelist add {name}')
+            result = mc_write(f'whitelist add {name}')
             mc_write('whitelist reload')
         else:
-            mc_write(f'whitelist remove {name}')
+            result = mc_write(f'whitelist remove {name}')
             mc_write('whitelist reload')
-        return True
+        mc_ls_whitelist() # Print the whitelist so we can verify the operation
+
+    return result
 
 
 def mc_ls_whitelist():
-    if not mc_running():
-        return False
-    else:
-        mc_write('whitelist list')
-        return True
+    """
+    Have the server print the current whitelist to the log
+
+    Returns:
+        True if successful, false otherwise (e.g if the server is not running)
+    """
+
+    result = False
+
+    if mc_running():
+        result = mc_write('whitelist list')
+
+    return result
 
 
 def mc_command(cmd, args):
+    """
+    Interpret a command given by the client (serverbot) and execute the appropriate action
+
+    Args:
+        cmd:  The command to run
+        args: (Optional) Any optional arguments to the command
+    """
+
+    # Remove newlines to prevent command injection
     if args is not None:
-        args.replace('\n','') # Remove any newlines to avoid command injection
-    print(f'CMD: {cmd} {args}')
+        args.replace('\n','')
+
+    print(f'mc_command: {cmd} {args}')
+
     help_msg = ('ServerBot Minecraft commands:\n'
                 '!mc help - print this message\n'
                 '!mc ping - ping the server\n'
@@ -205,34 +361,50 @@ def mc_command(cmd, args):
                 '!mc stop - stop the server\n'
                 '!mc whitelist <add|remove|list> [player] - list or modify the whitelist')
 #                '!mc cmd <command> - send command to the server\n'
+
+    # Print help message
     if cmd == 'help':
         try_send(f'OK  |{help_msg}')
+
+    # Start the server
     elif cmd == 'start':
         result = mc_start()
         if result:
             try_send('OK  |Minecraft server starting')
         else:
             try_send('ERR |Minecraft server is already running')
+
+    # Stop the server
     elif cmd == 'stop':
         result = mc_stop()
         if result:
             try_send('OK  |Minecraft server stopped')
         else:
             try_send('ERR |Minecraft Server is not running')
+
+    # Ping
     elif cmd == 'ping':
         try_send(f'OK  |pong')
+
+    # Print the server status
     elif cmd == 'status':
         if mc_running():
             try_send('OK  |Minecraft Server is running')
         else:
             try_send('OK  |Minecraft Server is not running')
+
+    # Add, remove, or show the whitelist
     elif cmd == 'whitelist':
         if args:
+
+            # Parse the extra args
             arglist = args.split()
             wl_cmd = arglist[0]
             wl_name = None
             if len(arglist) == 2:
                 wl_name = arglist[1]
+
+            # Show the whitelist
             if wl_cmd == 'list':
                 result = mc_ls_whitelist()
                 if result:
@@ -240,46 +412,63 @@ def mc_command(cmd, args):
                 else:
                     try_send('ERR |Minecraft Server is not running')
                 return
+
+            # Add a user
             if wl_cmd == 'add' and wl_name:
                 result = mc_whitelist(wl_name, True)
                 if result:
-                    try_send('OK  |User added to whitelist')
+                    try_send('OK  |Change submitted - check the log for success')
                 else:
                     try_send('ERR |Minecraft Server is not running')
                 return
+
+            # Remove a user
             elif wl_cmd == 'remove' and wl_name:
                 result = mc_whitelist(wl_name, False)
                 if result:
-                    try_send('OK  |User removed from whitelist')
+                    try_send('OK  |Change submitted - check the log for success')
                 else:
                     try_send('ERR |Minecraft Server is not running')
                 return
+
         # We didn't hit any valid cases
         try_send(f'ERR |Usage: !mc whitelist <add|remove|list> [player]')
 
+#    # Send an arbitrary command to the server
 #    elif cmd == 'cmd':
 #        if proc:
 #            mc_write(args)
 #            try_send('OK  |')
 #        else:
 #            try_send('ERR |Minecraft Server is not running')
+
+    # We didn't get a valid command
     else:
         try_send(f'ERR |Unknown command: {cmd}')
         try_send(f'OK  |{help_msg}')
 
-if __name__ == '__main__':
-    # Open IPC channel
-    listener = mpc.Listener(address, authkey=SECRET)
 
-    # Wait for connections
+# Main
+if __name__ == '__main__':
+
+    # Open IPC channel
+    listener = mpc.Listener(('localhost', MCC_PORT), authkey=SECRET)
+
     while True:
+
+        # Wait until we connect to a client (serverbot)
         try:
             conn = listener.accept()
         except (EOFError, ConnectionResetError, BrokenPipeError):
-            print('LISTENER: Failed to connect to client')
+            print('main: Failed to connect to client')
             continue
-        print('LISTENER: Client connected!')
+        print('main: Client connected!')
+
+        # If connection succeeded, listen for incoming commands
         while conn and (not conn.closed):
+
+            # Try the receive a command and execute it. If there's a failure, we assume the
+            # conneciton failed and close it (in order to reopen it)
             try:
                 line = conn.recv()
                 tokens = line.split(None, 1)
@@ -289,7 +478,5 @@ if __name__ == '__main__':
                     args = tokens[1].rstrip()
                 mc_command(cmd, args)
             except (EOFError, ConnectionResetError, BrokenPipeError):
-                print(f'LISTENER: Client disconnected!')
+                print(f'main: Client disconnected!')
                 conn.close()
-
- # TODO: detect crash and alert back to discord
