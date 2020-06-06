@@ -194,6 +194,8 @@ def mc_ls_whitelist():
 
 
 def mc_command(cmd, args):
+    if args is not None:
+        args.replace('\n','') # Remove any newlines to avoid command injection
     print(f'CMD: {cmd} {args}')
     help_msg = ('ServerBot Minecraft commands:\n'
                 '!mc help - print this message\n'
@@ -280,7 +282,7 @@ if __name__ == '__main__':
         while conn and (not conn.closed):
             try:
                 line = conn.recv()
-                tokens = line.split(' ', 1)
+                tokens = line.split(None, 1)
                 cmd = tokens[0]
                 args = None
                 if len(tokens) > 1:

@@ -62,7 +62,7 @@ async def on_message(message):
     # Check for command and permissions. Silently ignore failed authN because it could be a message
     # meant for a different bot
     if (guild.id == GUILD_ID) and (len(content) > 0) and (content[0] == '!') and ('RCON' in roles):
-        tokens = content.split(' ', 1)
+        tokens = content.split(None, 1)
         prefix = tokens[0][1:]
         command = None
         if len(tokens) > 1:
