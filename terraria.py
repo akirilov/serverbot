@@ -7,25 +7,25 @@ import threading
 import time
 import dotenv as de
 
-__all__ = ['Minecraft']
+__all__ = ['Terraria']
 
 # Load Env
 de.load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
 BOT_CHAN_ID = int(os.getenv('BOT_CHAN_ID'))
-MC_LOG_CHAN_ID = int(os.getenv('MC_LOG_CHAN_ID'))
-MC_DIR = os.getenv('MC_DIR')
-MCC_PORT = int(os.getenv('MCC_PORT'))
-MC_PREFIX = os.getenv('MC_PREFIX')
+TE_LOG_CHAN_ID = int(os.getenv('TE_LOG_CHAN_ID'))
+TE_DIR = os.getenv('TE_DIR')
+TEC_PORT = int(os.getenv('TEC_PORT'))
+TE_PREFIX = os.getenv('TE_PREFIX')
 
 # Globals (for controller)
 proc = None
 conn = None
 
 
-class Minecraft:
+class Terraria:
     """
-    Class for importing by the serverbot. It will handle all communication with the Minecraft
+    Class for importing by the serverbot. It will handle all communication with the Terraria
     Controller (the functionality implemented by the rest of this module.
 
     Just initialize it and register the send function for callback with the prefix
@@ -34,26 +34,27 @@ class Minecraft:
     def __init__(self,
                  client,
                  guild,
-                 prefix=MC_PREFIX,
-                 port=MCC_PORT,
+                 prefix=TE_PREFIX,
+                 port=TEC_PORT,
                  botchanid=BOT_CHAN_ID,
-                 logchanid=MC_LOG_CHAN_ID):
+                 logchanid=TE_LOG_CHAN_ID
+                 ):
         """
-        Initializes a new Minecraft object for communicating with a Minecraft Controller.
+        Initializes a new Terraria object for communicating with a Terraria Controller.
 
         Args:
             client:    The Discord client to interact with
             guild:     The Discord server (guild) the bot should respond on
             prefix:    (Optional) The Discord server prefix. Defaults to env var
-            port:      (Optional) The port to run the Minecraft controller on. Defaults to
+            port:      (Optional) The port to run the Terraria controller on. Defaults to
                        environment variable
             botchanid: (Optional) The id of the Discord server bot channel. Defaults to environment
                        variable
-            logchanid: (Optional) The id of the Discord server Minecraft log channel. Defaults to
+            logchanid: (Optional) The id of the Discord server Terraria log channel. Defaults to
                        environment variable
 
         Returns:
-            A newly initialized Minecraft object
+            A newly initialized Terraria object
         """
 
         # Set up members
@@ -67,7 +68,7 @@ class Minecraft:
 
         def read_thread():
             """
-            Launch the read thread. This will attempt to create a connection to a mc server
+            Launch the read thread. This will attempt to create a connection to a te server
             controller and listen for incoming data. This thread will stay alive until the process
             closes.
             """
@@ -77,7 +78,7 @@ class Minecraft:
                 # First connect to the server
                 try:
                     self.__conn = mpc.Client(('localhost', port), authkey=SECRET)
-                    self.__botchan_send('Minecraft server manager connected!')
+                    self.__botchan_send('Terraria server manager connected!')
 
                 # Leaving unassigned or closing skips the next loop
                 except (EOFError, ConnectionRefusedError, ConnectionResetError, BrokenPipeError):
@@ -102,7 +103,7 @@ class Minecraft:
 
                     # Close the connection so we end the loop and try to reconnect at the top
                     except (EOFError, ConnectionResetError, BrokenPipeError):
-                        self.__botchan_send('ERR: The Minecraft server manager crashed. Attempting '
+                        self.__botchan_send('ERR: The Terraria server manager crashed. Attempting '
                                             'to reconnect')
                         self.__conn.close()
 
@@ -126,7 +127,7 @@ class Minecraft:
             self.__conn.send(msg)
         except (OSError, AttributeError):
             # We lost connection. We'll just log it and let the read loop handle reconnecting
-            self.__botchan_send('Could not send command to Minecraft server manager')
+            self.__botchan_send('Could not send command to Terraria server manager')
 
 
     def __logchan_send(self, msg):
@@ -152,9 +153,9 @@ class Minecraft:
 
 
 
-def mc_running():
+def te_running():
     """
-    Check if the Minecraft server process is running.
+    Check if the Terraria server process is running.
 
     Returns:
         True if the server process is running, False otherwise
@@ -182,13 +183,13 @@ def try_send(msg):
         print(f'try_send: Failed to send: {msg}')
 
 
-def mc_writeline(cmd):
+def te_writeline(cmd):
     """
-    Try to send a message to the Minecraft process. We don't need to hand the failure here since the
+    Try to send a message to the Terraria process. We don't need to hand the failure here since the
     reader will catch it and mark the server dead.
 
     Args:
-        cmd: The Minecraft command to send
+        cmd: The Terraria command to send
 
     Returns:
         True if successful, False otherwise
@@ -199,13 +200,13 @@ def mc_writeline(cmd):
         proc.stdin.flush()
         return True
     except AttributeError:
-        print(f'mc_writeline: Server is dead')
+        print(f'te_writeline: Server is dead')
         return False
 
 
-def mc_start():
+def te_start():
     """
-    Start a new Minecraft process and spin up a listener thread to handle incoming data.
+    Start a new Terraria process and spin up a listener thread to handle incoming data.
 
     Returns:
         True if the server was started successfully, False otherwise (e.g. if server is already
@@ -215,27 +216,28 @@ def mc_start():
     global proc
 
     # Fastfail if the server is running, else start it
-    if mc_running():
+    if te_running():
         return False
     else:
-        proc = sp.Popen(['java', '-Xmx1024M', '-Xms1024M', '-jar', 'server.jar', 'nogui'],
+        proc = sp.Popen(['bash', 'TerrariaServer', '-config', 'serverconfig.txt'],
                         stdin=sp.PIPE,
                         stdout=sp.PIPE,
                         stderr=sp.STDOUT,
-                        cwd=MC_DIR)
+                        cwd=TE_DIR)
+
         # TODO verify this actually started successfully
 
         # Start a reader for this process
         def read_thread():
             """
-            Launch the reader thread. This will attempt to read from the Minecraft process and send
+            Launch the reader thread. This will attempt to read from the Terraria process and send
             it to the client (serverbot) to process. If a send fails, it will keep retrying until it
             succeeds. If a read fails, we continue and the top loop will catch the dead proces and
             report it to the client (serverbot)
             """
 
             line = None
-            while mc_running():
+            while te_running():
 
                 # Grab a new line if we're not holding onto a failed send
                 if not line:
@@ -275,9 +277,9 @@ def mc_start():
         return True
 
 
-def mc_stop():
+def te_stop():
     """
-    Cleanly save and stop the currently running Minecraft server, if any
+    Cleanly save and stop the currently running Terraria server, if any
 
     Returns:
         True if successful, False otherwise (e.g. if server isn't running)
@@ -285,10 +287,10 @@ def mc_stop():
 
     global proc
 
-    if not mc_running():
+    if not te_running():
         return False
     else:
-        mc_writeline('stop')
+        te_writeline('exit')
         # wait to stop
         while proc.poll() is None:
             time.sleep(1)
@@ -296,49 +298,7 @@ def mc_stop():
         return True
 
 
-def mc_whitelist(name, add):
-    """
-    Add a user to or remove a user from the whitelist
-
-    Args:
-        name: The name of the user to be added or removed
-        add:  If set to True, add the user, else remove
-
-    Returns:
-        True if successful, false otherwise (e.g if the server is not running)
-    """
-
-    result = False
-
-    if mc_running():
-        if add:
-            result = mc_writeline(f'whitelist add {name}')
-            mc_writeline('whitelist reload')
-        else:
-            result = mc_writeline(f'whitelist remove {name}')
-            mc_writeline('whitelist reload')
-        mc_ls_whitelist() # Print the whitelist so we can verify the operation
-
-    return result
-
-
-def mc_ls_whitelist():
-    """
-    Have the server print the current whitelist to the log
-
-    Returns:
-        True if successful, false otherwise (e.g if the server is not running)
-    """
-
-    result = False
-
-    if mc_running():
-        result = mc_writeline('whitelist list')
-
-    return result
-
-
-def mc_command(cmd, args):
+def te_command(cmd, args):
     """
     Interpret a command given by the client (serverbot) and execute the appropriate action
 
@@ -351,16 +311,14 @@ def mc_command(cmd, args):
     if args is not None:
         args.replace('\n','')
 
-    print(f'mc_command: {cmd} {args}')
+    print(f'te_command: {cmd} {args}')
 
-    help_msg = ('ServerBot Minecraft commands:\n'
-                f'!{MC_PREFIX} help - print this message\n'
-                f'!{MC_PREFIX} ping - ping the server\n'
-                f'!{MC_PREFIX} status - check the server status\n'
-                f'!{MC_PREFIX} start - start the server\n'
-                f'!{MC_PREFIX} stop - stop the server\n'
-                f'!{MC_PREFIX} whitelist <add|remove|list> [player] - list or modify the whitelist')
-#                f'!{MC_PREFIX} cmd <command> - send command to the server\n'
+    help_msg = ('ServerBot Terraria commands:\n'
+                f'!{TE_PREFIX} help - print this message\n'
+                f'!{TE_PREFIX} ping - ping the server\n'
+                f'!{TE_PREFIX} status - check the server status\n'
+                f'!{TE_PREFIX} start - start the server\n'
+                f'!{TE_PREFIX} stop - stop the server')
 
     # Print help message
     if cmd == 'help':
@@ -368,19 +326,19 @@ def mc_command(cmd, args):
 
     # Start the server
     elif cmd == 'start':
-        result = mc_start()
+        result = te_start()
         if result:
-            try_send('OK  |Minecraft server starting')
+            try_send('OK  |Terraria server starting')
         else:
-            try_send('ERR |Minecraft server is already running')
+            try_send('ERR |Terraria server is already running')
 
     # Stop the server
     elif cmd == 'stop':
-        result = mc_stop()
+        result = te_stop()
         if result:
-            try_send('OK  |Minecraft server stopped')
+            try_send('OK  |Terraria server stopped')
         else:
-            try_send('ERR |Minecraft Server is not running')
+            try_send('ERR |Terraria Server is not running')
 
     # Ping
     elif cmd == 'ping':
@@ -388,59 +346,10 @@ def mc_command(cmd, args):
 
     # Print the server status
     elif cmd == 'status':
-        if mc_running():
-            try_send('OK  |Minecraft Server is running')
+        if te_running():
+            try_send('OK  |Terraria Server is running')
         else:
-            try_send('OK  |Minecraft Server is not running')
-
-    # Add, remove, or show the whitelist
-    elif cmd == 'whitelist':
-        if args:
-
-            # Parse the extra args
-            arglist = args.split()
-            wl_cmd = arglist[0]
-            wl_name = None
-            if len(arglist) == 2:
-                wl_name = arglist[1]
-
-            # Show the whitelist
-            if wl_cmd == 'list':
-                result = mc_ls_whitelist()
-                if result:
-                    try_send('OK  |Success - check the log for current whitelist')
-                else:
-                    try_send('ERR |Minecraft Server is not running')
-                return
-
-            # Add a user
-            if wl_cmd == 'add' and wl_name:
-                result = mc_whitelist(wl_name, True)
-                if result:
-                    try_send('OK  |Change submitted - check the log for success')
-                else:
-                    try_send('ERR |Minecraft Server is not running')
-                return
-
-            # Remove a user
-            elif wl_cmd == 'remove' and wl_name:
-                result = mc_whitelist(wl_name, False)
-                if result:
-                    try_send('OK  |Change submitted - check the log for success')
-                else:
-                    try_send('ERR |Minecraft Server is not running')
-                return
-
-        # We didn't hit any valid cases
-        try_send(f'ERR |Usage: !mc whitelist <add|remove|list> [player]')
-
-#    # Send an arbitrary command to the server
-#    elif cmd == 'cmd':
-#        if proc:
-#            mc_writeline(args)
-#            try_send('OK  |')
-#        else:
-#            try_send('ERR |Minecraft Server is not running')
+            try_send('OK  |Terraria Server is not running')
 
     # We didn't get a valid command
     else:
@@ -452,7 +361,7 @@ def mc_command(cmd, args):
 if __name__ == '__main__':
 
     # Open IPC channel
-    listener = mpc.Listener(('localhost', MCC_PORT), authkey=SECRET)
+    listener = mpc.Listener(('localhost', TEC_PORT), authkey=SECRET)
 
     while True:
 
@@ -476,7 +385,7 @@ if __name__ == '__main__':
                 args = None
                 if len(tokens) > 1:
                     args = tokens[1].rstrip()
-                mc_command(cmd, args)
+                te_command(cmd, args)
             except (EOFError, ConnectionResetError, BrokenPipeError):
                 print(f'main: Client disconnected!')
                 conn.close()

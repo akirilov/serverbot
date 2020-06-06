@@ -1,16 +1,18 @@
 import asyncio
 import discord
-import minecraft as mc
+import dotenv as de
 import multiprocessing as mp
 import multiprocessing.connection as mpc
 import os
 import threading
 
-from dotenv import load_dotenv
+# Plugins
+import minecraft as mc
+import terraria as te
 
 
 # Load Env
-load_dotenv()
+de.load_dotenv()
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD_ID = int(os.getenv('GUILD_ID'))
 BOT_CHAN_ID=int(os.getenv('BOT_CHAN_ID'))
@@ -37,7 +39,11 @@ async def on_ready():
 
     # Initialize our server controllers
     mcc = mc.Minecraft(client, myguild)
+    tec = te.Terraria(client, myguild)
+
+    # Add prefixes
     controller_handlers[mcc.prefix] = mcc
+    controller_handlers[tec.prefix] = tec
 
 
 # Message handler
@@ -72,9 +78,11 @@ async def on_message(message):
 
 async def process_cmd(prefix, command, channel, roles):
     if prefix == 'halp':
+        # TODO: add this to the server file and pull from there
         help_msg = ('ServerBot prefixs:\n'
                     '!halp - print this message\n'
-                    '!mc - minecraft prefix ("!mc help" for more info)')
+                    '!mc - minecraft prefix ("!mc help" for more info)\n'
+                    '!te - terraria prefix ("!te help" for more info)')
         await channel.send(help_msg)
     elif prefix in controller_handlers:
         controller_handlers[prefix].try_send(command)

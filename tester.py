@@ -2,16 +2,16 @@ import multiprocessing as mp
 import multiprocessing.connection as mpc
 import threading
 import os
+import sys
 
 from dotenv import load_dotenv
 
 # Load Env
 load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
-MCC_PORT= int(os.getenv('MCC_PORT'))
 
 # Connect
-address = ('localhost', MCC_PORT)
+address = ('localhost', int(sys.argv[1]))
 conn = mpc.Client(address, authkey=SECRET)
 
 def read_thread():
