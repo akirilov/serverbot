@@ -1,13 +1,17 @@
 import asyncio
+import dotenv as de
 import multiprocessing as mp
 import multiprocessing.connection as mpc
 import os
+import re
 import subprocess as sp
 import threading
 import time
-import dotenv as de
 
 __all__ = ['Minecraft']
+
+# Consts
+DISCORD_MSG_LEN_MAX = 1990 # Leave a little room for error
 
 # Load Env
 de.load_dotenv()
@@ -17,6 +21,7 @@ MC_LOG_CHAN_ID = int(os.getenv('MC_LOG_CHAN_ID'))
 MC_DIR = os.getenv('MC_DIR')
 MCC_PORT = int(os.getenv('MCC_PORT'))
 MC_PREFIX = os.getenv('MC_PREFIX')
+MC_START_TIMEOUT = int(os.getenv('MC_START_TIMEOUT'))
 
 # Globals (for controller)
 proc = None
@@ -223,8 +228,43 @@ def mc_start():
                         stdout=sp.PIPE,
                         stderr=sp.STDOUT,
                         cwd=MC_DIR)
-        # TODO verify this actually started successfully
 
+        # Wait for the server to start up to the specified timeout
+        line = ''
+        startup_buf = ''
+        start_time = time.time()
+        timeout = MC_START_TIMEOUT #seconds
+        res = re.compile('\[[0-9:]+\] \[Server thread/INFO\]: Done \([0-9.]+s\)\! For help, type "help"')
+
+        # Look for the statup line
+        while not res.match(line.strip()):
+
+            # Check timeout
+            if time.time() > (start_time + timeout):
+                try_send(f'LOG |{startup_buf}')
+                return False
+
+            # Fetch a new line. If the read fails, dump the log and fail
+            try:
+                line = bytes.decode(proc.stdout.readline())
+            except BrokenPipeError:
+                try_send(f'LOG |{startup_buf}')
+                return False
+
+            # Dump the current log if we would go over the max message size
+            if len(startup_buf) > (DISCORD_MSG_LEN_MAX - len(line)):
+                try_send(f'LOG |{startup_buf}')
+                startup_buf = ''
+
+            # Add the current line to the buf
+            startup_buf += line
+
+        # Dump the buffer
+        if startup_buf:
+            try_send(f'LOG |{startup_buf}')
+
+        # TODO: add Event to close readur during stop
+        
         # Start a reader for this process
         def read_thread():
             """
@@ -370,15 +410,19 @@ def mc_command(cmd, args):
     elif cmd == 'start':
         result = mc_start()
         if result:
-            try_send('OK  |Minecraft server starting')
-        else:
+            try_send('OK  |Minecraft server started')
+        elif mc_running():
             try_send('ERR |Minecraft server is already running')
+        else:
+            try_send('ERR |Unable to start Minecraft server')
 
     # Stop the server
     elif cmd == 'stop':
         result = mc_stop()
         if result:
             try_send('OK  |Minecraft server stopped')
+        elif te_running():
+            try_send('ERR |Unable to stop Terraria server')
         else:
             try_send('ERR |Minecraft Server is not running')
 

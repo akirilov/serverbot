@@ -9,6 +9,9 @@ import dotenv as de
 
 __all__ = ['Terraria']
 
+# Consts
+DISCORD_MSG_LEN_MAX = 1990 # Leave a little room for error
+
 # Load Env
 de.load_dotenv()
 SECRET = str.encode(os.getenv('SECRET'))
@@ -17,6 +20,7 @@ TE_LOG_CHAN_ID = int(os.getenv('TE_LOG_CHAN_ID'))
 TE_DIR = os.getenv('TE_DIR')
 TEC_PORT = int(os.getenv('TEC_PORT'))
 TE_PREFIX = os.getenv('TE_PREFIX')
+TE_START_TIMEOUT = int(os.getenv('TE_START_TIMEOUT'))
 
 # Globals (for controller)
 proc = None
@@ -225,7 +229,40 @@ def te_start():
                         stderr=sp.STDOUT,
                         cwd=TE_DIR)
 
-        # TODO verify this actually started successfully
+        # Wait for the server to start up to the specified timeout
+        line = ''
+        startup_buf = ''
+        start_time = time.time()
+        timeout = TE_START_TIMEOUT #seconds
+
+        # Look for the startup line
+        while line.strip() != ': Server started':
+
+            # Check timeout
+            if time.time() > (start_time + timeout):
+                try_send(f'LOG |{startup_buf}')
+                return False
+
+            # Fetch a new line. If the read fails, dump the log and fail
+            try:
+                line = bytes.decode(proc.stdout.readline())
+            except BrokenPipeError:
+                try_send(f'LOG |{startup_buf}')
+                return False
+
+            # Dump the current log if we would go over the max message size
+            if len(startup_buf) > (DISCORD_MSG_LEN_MAX - len(line)):
+                try_send(f'LOG |{startup_buf}')
+                startup_buf = ''
+
+            # Add the current line to the buf
+            startup_buf += line
+
+        # Dump the buffer
+        if startup_buf:
+            try_send(f'LOG |{startup_buf}')
+
+        # TODO: add an Event to use to stop the reader during shutdown so we don't need to see the giant log spam. Also consume all those lines and verify that we stopped cleanly
 
         # Start a reader for this process
         def read_thread():
@@ -328,15 +365,19 @@ def te_command(cmd, args):
     elif cmd == 'start':
         result = te_start()
         if result:
-            try_send('OK  |Terraria server starting')
-        else:
+            try_send('OK  |Terraria server started')
+        elif te_running():
             try_send('ERR |Terraria server is already running')
+        else:
+            try_send('ERR |Unable to start Terraria server')
 
     # Stop the server
     elif cmd == 'stop':
         result = te_stop()
         if result:
             try_send('OK  |Terraria server stopped')
+        elif te_running():
+            try_send('ERR |Unable to stop Terraria server')
         else:
             try_send('ERR |Terraria Server is not running')
 
