@@ -421,7 +421,7 @@ def mc_command(cmd, args):
         result = mc_stop()
         if result:
             try_send('OK  |Minecraft server stopped')
-        elif te_running():
+        elif mc_running():
             try_send('ERR |Unable to stop Terraria server')
         else:
             try_send('ERR |Minecraft Server is not running')
